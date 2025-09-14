@@ -1,4 +1,3 @@
-# helpers/cors_headers.py
 ALLOWED_ORIGINS = [
     "https://editor.weweb.io",
     "https://transpetro.smartisupply.com.br"

@@ -41,6 +41,7 @@ class RpcCallError(Exception):
         self.data = data
         super().__init__(f"Erro na função '{function_name}': Status {status_code} - {data}")
 
+
 # Helper para chamada segura de RPC
 def safe_rpc_call(supabase_client, function_name, params, user_id, token, success_message="", error_context="", raise_exception=False):
     try:
@@ -49,8 +50,8 @@ def safe_rpc_call(supabase_client, function_name, params, user_id, token, succes
         if isinstance(data, dict) and data.get('error'):
             log_process_event(
                 supabase_client,
-                process_name='suppliers_upload',
-                function_name='process_supplier_upload',
+                process_name='orders_upload',
+                function_name='process_po_upload',
                 step='rpc_call',
                 status='error',
                 message=f"Erro ao chamar {function_name} ({error_context}): {data}",
@@ -65,8 +66,8 @@ def safe_rpc_call(supabase_client, function_name, params, user_id, token, succes
         if success_message:
             log_process_event(
                 supabase_client,
-                process_name='suppliers_upload',
-                function_name='process_supplier_upload',
+                process_name='orders_upload',
+                function_name='process_po_upload',
                 step='rpc_call',
                 status='success',
                 message=success_message,
@@ -74,13 +75,13 @@ def safe_rpc_call(supabase_client, function_name, params, user_id, token, succes
                 token=token,
                 metadata={"function_name": function_name},
                 print_prefix='✅ '
-            )
+            )            
         return data
     except Exception as e:
         log_process_event(
             supabase_client,
-            process_name='suppliers_upload',
-            function_name='process_supplier_upload',
+            process_name='orders_upload',
+            function_name='process_po_upload',
             step='rpc_call',
             status='error',
             message=f"Exceção inesperada ao chamar {function_name} ({error_context}): {e}",
@@ -93,52 +94,52 @@ def safe_rpc_call(supabase_client, function_name, params, user_id, token, succes
             raise
         return None
 
-# Processa batches de forma inalterada
+# Processa batches de pedidos e itens
 def process_batches(mapped_data, owner_id, bucket_id, name, supabase_client, token):
-    for idx, batch in enumerate(chunk_array(mapped_data['suppliers'], 500), start=1):
+    for idx, batch in enumerate(chunk_array(mapped_data['orders'], 500), start=1):
         log_process_event(
             supabase_client,
-            process_name='suppliers_upload',
-            function_name='process_supplier_upload',
-            step='process_suppliers_batch',
+            process_name='orders_upload',
+            function_name='process_po_upload',
+            step='process_orders_batch',
             status='info',
-            message=f"Enviando lote {idx} de fornecedores com {len(batch)} registros",
+            message=f"Enviando lote {idx} de pedidos com {len(batch)} registros",
             user_id=owner_id,
             token=token,
-            metadata={"batch_index": idx, "batch_type": "suppliers", "batch_size": len(batch)},
+            metadata={"batch_index": idx, "batch_type": "orders", "batch_size": len(batch)},
             print_prefix='🔄 '
         )
         safe_rpc_call(
             supabase_client,
-            'fn_insert_suppliers',
+            'fn_insert_orders',
             {'payload': batch, 'token': token, 'owner_id': owner_id},
             owner_id,
             token,
-            success_message=f"Lote {idx} de fornecedores processado com sucesso!",
-            error_context=f"Lote {idx} fornecedores",
+            success_message=f"Lote {idx} de pedidos processado com sucesso!",
+            error_context=f"Lote {idx} pedidos",
             raise_exception=True
         )
-    for idx, batch in enumerate(chunk_array(mapped_data['supplier_contacts'], 500), start=1):
+    for idx, batch in enumerate(chunk_array(mapped_data['order_items'], 500), start=1):
         log_process_event(
             supabase_client,
-            process_name='suppliers_upload',
-            function_name='process_supplier_upload',
-            step='process_contacts_batch',
+            process_name='orders_upload',
+            function_name='process_po_upload',
+            step='process_items_batch',
             status='info',
-            message=f"Enviando lote {idx} de contatos com {len(batch)} registros",
+            message=f"Enviando lote {idx} de itens com {len(batch)} registros",
             user_id=owner_id,
             token=token,
-            metadata={"batch_index": idx, "batch_type": "supplier_contacts", "batch_size": len(batch)},
+            metadata={"batch_index": idx, "batch_type": "order_items", "batch_size": len(batch)},
             print_prefix='🔄 '
         )
         safe_rpc_call(
             supabase_client,
-            'fn_insert_supplier_contacts',
+            'fn_insert_order_items',
             {'payload': batch, 'token': token, 'owner_id': owner_id},
             owner_id,
             token,
-            success_message=f"Lote {idx} de contatos processado com sucesso!",
-            error_context=f"Lote {idx} contatos",
+            success_message=f"Lote {idx} de itens processado com sucesso!",
+            error_context=f"Lote {idx} itens",
             raise_exception=True
         )
 
@@ -174,8 +175,8 @@ def lambda_handler(event, context):
         field_mapping = raw.get('field_mapping')
         log_process_event(
             supabase_client,
-            process_name='suppliers_upload',
-            function_name='process_supplier_upload',
+            process_name='orders_upload',
+            function_name='process_po_upload',
             step='validate_payload',
             status='success',
             message=f"Payload recebido: arquivo '{name}' no bucket '{bucket_id}'",
@@ -187,8 +188,8 @@ def lambda_handler(event, context):
         if not all([bucket_id, name, owner_id, field_mapping]):
             log_process_event(
                 supabase_client,
-                process_name='suppliers_upload',
-                function_name='process_supplier_upload',
+                process_name='orders_upload',
+                function_name='process_po_upload',
                 step='validate_payload',
                 status='error',
                 message='Payload incompleto: bucket_id, name, owner_id ou field_mapping ausente',
@@ -196,14 +197,14 @@ def lambda_handler(event, context):
                 token=token if token else 'unknown',
                 metadata={"bucket_id": bucket_id, "filename": name},
                 print_prefix='❌ '
-            )            
+            )
             raise ValueError('Payload incompleto')
 
         # 5️⃣ Download
         log_process_event(
             supabase_client,
-            process_name='suppliers_upload',
-            function_name='process_supplier_upload',
+            process_name='orders_upload',
+            function_name='process_po_upload',
             step='download_file',
             status='info',
             message=f"Baixando arquivo '{name}' do bucket '{bucket_id}'",
@@ -216,8 +217,8 @@ def lambda_handler(event, context):
         if isinstance(download_res, dict) and download_res.get('error'):
             log_process_event(
                 supabase_client,
-                process_name='suppliers_upload',
-                function_name='process_supplier_upload',
+                process_name='orders_upload',
+                function_name='process_po_upload',
                 step='download_file',
                 status='error',
                 message=f"Erro ao baixar o arquivo: {download_res['error']}",
@@ -234,35 +235,35 @@ def lambda_handler(event, context):
         parsed_data = parse_file(file_content)
         mapped_data = apply_mapping(parsed_data, field_mapping)
         duration = round(time.monotonic() - t0, 2)
-        total_suppliers = len(mapped_data.get("suppliers", []))
-        total_contacts = len(mapped_data.get("supplier_contacts", []))
+        total_orders = len(mapped_data.get("orders", []))
+        total_items = len(mapped_data.get("order_items", []))
         log_process_event(
             supabase_client,
-            process_name='suppliers_upload',
-            function_name='process_supplier_upload',
+            process_name='orders_upload',
+            function_name='process_po_upload',
             step='parse_and_map',
             status='success',
-            message=f"Parse+mapping levou {duration:.2f}s — {total_suppliers} fornecedores, {total_contacts} contatos",
+            message=f"Parse+mapping levou {duration:.2f}s — {total_orders} ordens, {total_items} itens",
             user_id=owner_id,
             token=token,
             metadata={
                 "bucket_id": bucket_id,
                 "filename": name,
                 "duration_seconds": duration,
-                "total_suppliers": total_suppliers,
-                "total_contacts": total_contacts
+                "total_orders": total_orders,
+                "total_order_items": total_items
             },
             print_prefix='⏱ '
         )
         del file_content, parsed_data
 
-        # 7️⃣ Enriquecimento
+        # 7️⃣ Enriquecimento: company_id
         resp = supabase_client.table('company_users').select('company_id').eq('id', owner_id).single().execute()
         if not resp.data:
             log_process_event(
                 supabase_client,
-                process_name='suppliers_upload',
-                function_name='process_supplier_upload',
+                process_name='orders_upload',
+                function_name='process_po_upload',
                 step='enrich_company_id',
                 status='error',
                 message='Erro ao buscar company_id do usuário.',
@@ -273,18 +274,18 @@ def lambda_handler(event, context):
             )
             raise ValueError('Erro ao buscar company_id do usuário.')
         company_id = resp.data['company_id']
-        for lst in ('suppliers', 'supplier_contacts'):
+        for lst in ('orders', 'order_items'):
             mapped_data[lst] = [{**item, 'company_id': company_id} for item in mapped_data[lst]]
 
-        # 8️⃣ Processar batches
+        # 8️⃣ Processar batches de pedidos e itens
         process_batches(mapped_data, owner_id, bucket_id, name, supabase_client, token)
         log_process_event(
             supabase_client,
-            process_name='suppliers_upload',
-            function_name='process_supplier_upload',
+            process_name='orders_upload',
+            function_name='process_po_upload',
             step='process_batches',
             status='success',
-            message=f"Lotes de fornecedores e contatos processados com sucesso para o arquivo '{name}'",
+            message=f"Lotes de pedidos e itens processados com sucesso para o arquivo '{name}'",
             user_id=owner_id,
             token=token,
             metadata={"bucket_id": bucket_id, "filename": name},
@@ -295,8 +296,8 @@ def lambda_handler(event, context):
     except Exception as e:
         log_process_event(
             supabase_client,
-            process_name='suppliers_upload',
-            function_name='process_supplier_upload',
+            process_name='orders_upload',
+            function_name='process_po_upload',
             step='process_batches',
             status='error',
             message=f"Erro na função de processamento: {e}",
@@ -308,7 +309,7 @@ def lambda_handler(event, context):
         return {'statusCode': 500, 'headers': {**headers, 'Content-Type': 'application/json'}, 'body': json.dumps({'error': str(e)})}
 
     finally:
-        # 9️⃣ Always-remove: instrumentado
+        # 9️⃣ Always-remove arquivo do bucket
         if supabase_client and bucket_id and name:
             try:
                 bucket = supabase_client.storage.from_(bucket_id)
@@ -317,8 +318,8 @@ def lambda_handler(event, context):
                 if err:
                     log_process_event(
                         supabase_client,
-                        process_name='suppliers_upload',
-                        function_name='process_supplier_upload',
+                        process_name='orders_upload',
+                        function_name='process_po_upload',
                         step='cleanup_zip',
                         status='error',
                         message=f"Erro ao remover '{name}' do bucket '{bucket_id}': {err}",
@@ -330,8 +331,8 @@ def lambda_handler(event, context):
                 else:
                     log_process_event(
                         supabase_client,
-                        process_name='suppliers_upload',
-                        function_name='process_supplier_upload',
+                        process_name='orders_upload',
+                        function_name='process_po_upload',
                         step='cleanup_zip',
                         status='success',
                         message=f"Arquivo '{name}' removido do bucket '{bucket_id}' com sucesso.",
@@ -343,8 +344,8 @@ def lambda_handler(event, context):
             except Exception as rem_e:
                 log_process_event(
                     supabase_client,
-                    process_name='suppliers_upload',
-                    function_name='process_supplier_upload',
+                    process_name='orders_upload',
+                    function_name='process_po_upload',
                     step='cleanup_zip',
                     status='error',
                     message=f"Exceção ao tentar remover '{name}' do bucket '{bucket_id}': {rem_e}",
@@ -356,8 +357,8 @@ def lambda_handler(event, context):
         else:
             log_process_event(
                 supabase_client,
-                process_name='suppliers_upload',
-                function_name='process_supplier_upload',
+                process_name='orders_upload',
+                function_name='process_po_upload',
                 step='cleanup_zip',
                 status='skip',
                 message="Remoção do arquivo ignorada: supabase_client, bucket_id ou name não definido",

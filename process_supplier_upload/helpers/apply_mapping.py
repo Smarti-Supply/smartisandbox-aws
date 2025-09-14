@@ -10,37 +10,58 @@ def normalize_key(key: str) -> str:
     key = ''.join(c for c in key if c.isalnum() or c == '_')
     return key
 
-def parse_integer(value: str) -> int:
-    return int(value.replace('.', '').replace(',', '').split()[0])
-
-def parse_float_value(value: str) -> float:
-    return float(value.replace(',', ''))
 
 def to_title_case(text: str) -> str:
     return text.lower().title()
 
+
 def only_digits(value: str) -> str:
     return ''.join(filter(str.isdigit, value))
 
+
+def clean_text_id(value: str) -> str:
+    """Remove sufixo '.0' e filtra apenas dígitos, retornando uma string."""
+    if value is None:
+        return ''
+    
+    value = str(value).strip()
+    if value.endswith('.0'):
+        value = value[:-2]
+
+    return ''.join(filter(str.isdigit, value))
+
+
 def apply_mapping(parsed_data: list, field_mapping: dict) -> dict:
+    """
+    Aplica mapeamento de campos definindo orders e order_items, parseando valores e eliminando duplicados.
+    """
     header_map = field_mapping['supplier_header_mapping']
+
+    # Filtrar linhas completamente vazias
+    filtered_data = [row for row in parsed_data if any(v not in (None, '') for v in row.values())]
+    print(f"🔍 parsed_data (após filtro): {len(filtered_data)} linhas válidas")
+    if filtered_data:
+        normalized_headers = [normalize_key(k) for k in filtered_data[0].keys()]
+        print("🔍 Headers normalizados detectados:", normalized_headers)
+    else:
+        print("🔍 Nenhuma linha válida em parsed_data após filtro.")
 
     mapped = {
         "suppliers": [],
-        "supplier_users": []
+        "supplier_contacts": []
     }
 
-    for row in parsed_data:
+    for row in filtered_data:
         normalized_row = {}
         for key, value in row.items():
             normalized_row[normalize_key(key)] = value
 
         supplier = {}
-        user = {}
+        contact = {}
         external_id = None
 
         for map_entry in header_map:
-            column_key = normalize_key(map_entry['file_column_name'])
+            column_key = normalize_key(map_entry['file_column_name'].strip())
             value = normalized_row.get(column_key, None)
 
             if value is None and map_entry['required']:
@@ -60,20 +81,29 @@ def apply_mapping(parsed_data: list, field_mapping: dict) -> dict:
                     parsed_value = value.upper()
                 elif column == 'name' or column.startswith('address_'):
                     parsed_value = to_title_case(value)
+                elif column == 'external_id':
+                    parsed_value = clean_text_id(value)
 
             if table == "suppliers":
-                supplier[column] = parsed_value
                 if column == "external_id":
                     external_id = parsed_value
-            elif table == "supplier_users":
-                user[column] = parsed_value
+                supplier[column] = parsed_value
+            elif table == "supplier_contacts":
+                contact[column] = parsed_value
 
-        if supplier and external_id:
+        # Verifica se supplier tem os campos obrigatórios não vazios
+        is_valid_supplier = all(supplier.get(field) not in (None, '') for field in ['cnpj', 'name', 'external_id'])
+
+        if is_valid_supplier:
             mapped['suppliers'].append(supplier)
 
-        if user and user.get('email') and external_id:
-            user['external_id'] = external_id
-            mapped['supplier_users'].append(user)
+            # Verifica se contact tem os campos obrigatórios não vazios
+            is_valid_contact = all(contact.get(field) not in (None, '') for field in ['name', 'email'])
+
+            # Adiciona contact se for válido
+            if is_valid_contact:
+                contact['external_id'] = external_id
+                mapped['supplier_contacts'].append(contact)
 
     # Eliminar duplicados por external_id
     suppliers_dict = {}
@@ -82,13 +112,13 @@ def apply_mapping(parsed_data: list, field_mapping: dict) -> dict:
     mapped['suppliers'] = list(suppliers_dict.values())
 
     # Eliminar duplicados por email
-    supplier_users_dict = {}
-    for user in mapped['supplier_users']:
-        supplier_users_dict[user['email']] = user
-    mapped['supplier_users'] = list(supplier_users_dict.values())
+    supplier_contacts_dict = {}
+    for contact in mapped['supplier_contacts']:
+        supplier_contacts_dict[contact['email']] = contact
+    mapped['supplier_contacts'] = list(supplier_contacts_dict.values())
 
     # Ordenar os arrays
     mapped['suppliers'].sort(key=lambda x: x['external_id'])
-    mapped['supplier_users'].sort(key=lambda x: x['email'])
+    mapped['supplier_contacts'].sort(key=lambda x: x['email'])
 
     return mapped

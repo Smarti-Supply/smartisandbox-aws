@@ -5,16 +5,18 @@ Description: >
 
 Globals:
   Function:
-    Timeout: 180            # 3 minutos
-    MemorySize: 512         # 512MB de RAM
     Runtime: python3.13
     Architectures:
       - arm64
     LoggingConfig:
       LogFormat: JSON
+    Tracing: Active
     Tags:
       project: transpetro
       stage: !Ref StageName
+    Environment:
+      Variables:
+        SECRET_NAME: !Ref SecretName
 
 Parameters:
   StageName:
@@ -28,12 +30,20 @@ Parameters:
     Description: Nome do Secret no Secrets Manager para pegar variáveis
 
 Resources:
-  # Definição explícita da API Gateway
   TranspetroApi:
     Type: AWS::Serverless::Api
     Properties:
       Name: transpetro-api
       StageName: !Ref StageName
+      TracingEnabled: true
+      Auth:
+        ApiKeyRequired: true
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          LoggingLevel: INFO
+          DataTraceEnabled: true
+          MetricsEnabled: true
       Tags:
         project: transpetro
         stage: !Ref StageName
@@ -44,6 +54,8 @@ Resources:
       CodeUri: process_supplier_upload/
       Handler: app.lambda_handler
       AutoPublishAlias: !Ref StageName
+      Timeout: 180
+      MemorySize: 512
       Policies:
         - Version: "2012-10-17"
           Statement:
@@ -51,9 +63,6 @@ Resources:
               Action:
                 - secretsmanager:GetSecretValue
               Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SecretName}*
-      Environment:
-        Variables:
-          SECRET_NAME: !Ref SecretName
       Events:
         ProcessSupplierUpload:
           Type: Api
@@ -61,6 +70,83 @@ Resources:
             RestApiId: !Ref TranspetroApi
             Path: /process-supplier-upload
             Method: post
+            Auth:
+              ApiKeyRequired: true
+
+  ProcessPoUploadFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: process_po_upload/
+      Handler: app.lambda_handler
+      AutoPublishAlias: !Ref StageName
+      Timeout: 180
+      MemorySize: 512
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: "Allow"
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SecretName}*
+      Events:
+        ProcessPoUpload:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TranspetroApi
+            Path: /process-po-upload
+            Method: post
+            Auth:
+              ApiKeyRequired: true
+
+  ProcessPoFilesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: process_po_files/
+      Handler: app.lambda_handler
+      AutoPublishAlias: !Ref StageName
+      Timeout: 180
+      MemorySize: 512
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: "Allow"
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SecretName}*
+      Events:
+        ProcessPoFiles:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TranspetroApi
+            Path: /process-po-files
+            Method: post
+            Auth:
+              ApiKeyRequired: true
+
+  ProcessPoMigoMiroUploadFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: process_po_migo_miro_upload/
+      Handler: app.lambda_handler
+      AutoPublishAlias: !Ref StageName
+      Timeout: 180
+      MemorySize: 512
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: "Allow"
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SecretName}*
+      Events:
+        ProcessPoMigoMiroUpload:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TranspetroApi
+            Path: /process-po-migo-miro-upload
+            Method: post
+            Auth:
+              ApiKeyRequired: true
 
 Outputs:
   ProcessSupplierUploadApi:
@@ -72,3 +158,33 @@ Outputs:
   ProcessSupplierUploadFunctionIamRole:
     Description: Implicit IAM Role created for the function
     Value: !GetAtt ProcessSupplierUploadFunctionRole.Arn
+
+  ProcessPoUploadApi:
+    Description: API Gateway endpoint URL for Process PO Upload
+    Value: !Sub "https://${TranspetroApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/process-po-upload"
+  ProcessPoUploadFunction:
+    Description: Lambda Function ARN
+    Value: !GetAtt ProcessPoUploadFunction.Arn
+  ProcessPoUploadFunctionIamRole:
+    Description: Implicit IAM Role created for the function
+    Value: !GetAtt ProcessPoUploadFunctionRole.Arn
+
+  ProcessPoFilesApi:
+    Description: API Gateway endpoint URL for Process PO Files
+    Value: !Sub "https://${TranspetroApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/process-po-files"
+  ProcessPoFilesFunction:
+    Description: Lambda Function ARN
+    Value: !GetAtt ProcessPoFilesFunction.Arn
+  ProcessPoFilesFunctionIamRole:
+    Description: Implicit IAM Role created for the function
+    Value: !GetAtt ProcessPoFilesFunctionRole.Arn
+
+  ProcessPoMigoMiroUploadApi:
+    Description: API Gateway endpoint URL for Process PO Migo Miro Upload
+    Value: !Sub "https://${TranspetroApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/process-po-migo-miro-upload"
+  ProcessPoMigoMiroUploadFunction:
+    Description: Lambda Function ARN
+    Value: !GetAtt ProcessPoMigoMiroUploadFunction.Arn
+  ProcessPoMigoMiroUploadFunctionIamRole:
+    Description: Implicit IAM Role created for the function
+    Value: !GetAtt ProcessPoMigoMiroUploadFunctionRole.Arn

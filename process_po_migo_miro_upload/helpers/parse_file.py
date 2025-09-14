@@ -45,5 +45,5 @@ def parse_file(file_blob: bytes) -> list:
 
         item = {header: cell for header, cell in zip(headers, row)}
         data.append(item)
-        
+
     return data

@@ -13,6 +13,7 @@ from helpers.logger import log_process_event
 _cached_secrets: dict = None
 _supabase_client: Client = None
 
+
 def _init_clients():
     """
     Inicializa e retorna o cliente Supabase e o AWS_TOKEN, com cache em nível de módulo.
@@ -33,6 +34,7 @@ def _init_clients():
     except Exception as e:
         raise RuntimeError(f"Erro ao inicializar clients: {e}")
 
+
 # Exceção customizada para chamadas RPC
 class RpcCallError(Exception):
     def __init__(self, function_name, status_code, data):
@@ -40,6 +42,7 @@ class RpcCallError(Exception):
         self.status_code = status_code
         self.data = data
         super().__init__(f"Erro na função '{function_name}': Status {status_code} - {data}")
+
 
 # Helper para chamada segura de RPC
 def safe_rpc_call(supabase_client, function_name, params, user_id, token, success_message="", error_context="", raise_exception=False):
@@ -49,8 +52,8 @@ def safe_rpc_call(supabase_client, function_name, params, user_id, token, succes
         if isinstance(data, dict) and data.get('error'):
             log_process_event(
                 supabase_client,
-                process_name='suppliers_upload',
-                function_name='process_supplier_upload',
+                process_name='migo_miro_upload',
+                function_name='process_po_migo_miro_upload',
                 step='rpc_call',
                 status='error',
                 message=f"Erro ao chamar {function_name} ({error_context}): {data}",
@@ -65,8 +68,8 @@ def safe_rpc_call(supabase_client, function_name, params, user_id, token, succes
         if success_message:
             log_process_event(
                 supabase_client,
-                process_name='suppliers_upload',
-                function_name='process_supplier_upload',
+                process_name='migo_miro_upload',
+                function_name='process_po_migo_miro_upload',
                 step='rpc_call',
                 status='success',
                 message=success_message,
@@ -74,13 +77,13 @@ def safe_rpc_call(supabase_client, function_name, params, user_id, token, succes
                 token=token,
                 metadata={"function_name": function_name},
                 print_prefix='✅ '
-            )
+            )           
         return data
     except Exception as e:
         log_process_event(
             supabase_client,
-            process_name='suppliers_upload',
-            function_name='process_supplier_upload',
+            process_name='migo_miro_upload',
+            function_name='process_po_migo_miro_upload',
             step='rpc_call',
             status='error',
             message=f"Exceção inesperada ao chamar {function_name} ({error_context}): {e}",
@@ -93,59 +96,52 @@ def safe_rpc_call(supabase_client, function_name, params, user_id, token, succes
             raise
         return None
 
-# Processa batches de forma inalterada
-def process_batches(mapped_data, owner_id, bucket_id, name, supabase_client, token):
-    for idx, batch in enumerate(chunk_array(mapped_data['suppliers'], 500), start=1):
+
+# Processa batches de dados MIGO MIRO
+def process_migo_miro_batches(transformed_data, owner_id, bucket_id, name, supabase_client, token):
+    """
+    Processa os dados transformados em batches de 500 registros
+    """
+    total_batches = len(list(chunk_array(transformed_data, 500)))
+    
+    for idx, batch in enumerate(chunk_array(transformed_data, 500), start=1):
         log_process_event(
             supabase_client,
-            process_name='suppliers_upload',
-            function_name='process_supplier_upload',
-            step='process_suppliers_batch',
+            process_name='migo_miro_upload',
+            function_name='process_po_migo_miro_upload',
+            step='process_batch',
             status='info',
-            message=f"Enviando lote {idx} de fornecedores com {len(batch)} registros",
+            message=f"Enviando lote {idx}/{total_batches} com {len(batch)} registros",
             user_id=owner_id,
             token=token,
-            metadata={"batch_index": idx, "batch_type": "suppliers", "batch_size": len(batch)},
+            metadata={
+                "batch_index": idx,
+                "total_batches": total_batches,
+                "batch_size": len(batch),
+                "bucket_id": bucket_id,
+                "filename": name
+            },
             print_prefix='🔄 '
         )
+        
+        # Chama a função do Supabase para processar o batch
         safe_rpc_call(
             supabase_client,
-            'fn_insert_suppliers',
+            'fn_process_migo_miro_imports',
             {'payload': batch, 'token': token, 'owner_id': owner_id},
             owner_id,
             token,
-            success_message=f"Lote {idx} de fornecedores processado com sucesso!",
-            error_context=f"Lote {idx} fornecedores",
+            success_message=f"Lote {idx}/{total_batches} processado com sucesso! ({len(batch)} registros)",
+            error_context=f"Lote {idx} de dados MIGO MIRO",
             raise_exception=True
         )
-    for idx, batch in enumerate(chunk_array(mapped_data['supplier_contacts'], 500), start=1):
-        log_process_event(
-            supabase_client,
-            process_name='suppliers_upload',
-            function_name='process_supplier_upload',
-            step='process_contacts_batch',
-            status='info',
-            message=f"Enviando lote {idx} de contatos com {len(batch)} registros",
-            user_id=owner_id,
-            token=token,
-            metadata={"batch_index": idx, "batch_type": "supplier_contacts", "batch_size": len(batch)},
-            print_prefix='🔄 '
-        )
-        safe_rpc_call(
-            supabase_client,
-            'fn_insert_supplier_contacts',
-            {'payload': batch, 'token': token, 'owner_id': owner_id},
-            owner_id,
-            token,
-            success_message=f"Lote {idx} de contatos processado com sucesso!",
-            error_context=f"Lote {idx} contatos",
-            raise_exception=True
-        )
+
 
 # Handler principal
 def lambda_handler(event, context):
     origin = event["headers"].get("origin") if event.get("headers") else None
     headers = cors_headers(origin)
+    
     # 1️⃣ Preflight CORS
     if event.get('httpMethod') == 'OPTIONS':
         return {'statusCode': 200, 'headers': headers, 'body': 'ok'}
@@ -171,11 +167,11 @@ def lambda_handler(event, context):
         bucket_id = raw.get('bucket_id')
         name = raw.get('name')
         owner_id = raw.get('owner_id')
-        field_mapping = raw.get('field_mapping')
+        
         log_process_event(
             supabase_client,
-            process_name='suppliers_upload',
-            function_name='process_supplier_upload',
+            process_name='migo_miro_upload',
+            function_name='process_po_migo_miro_upload',
             step='validate_payload',
             status='success',
             message=f"Payload recebido: arquivo '{name}' no bucket '{bucket_id}'",
@@ -184,26 +180,27 @@ def lambda_handler(event, context):
             metadata={"bucket_id": bucket_id, "filename": name},
             print_prefix='📦 '
         )
-        if not all([bucket_id, name, owner_id, field_mapping]):
+        
+        if not all([bucket_id, name, owner_id]):
             log_process_event(
                 supabase_client,
-                process_name='suppliers_upload',
-                function_name='process_supplier_upload',
+                process_name='migo_miro_upload',
+                function_name='process_po_migo_miro_upload',
                 step='validate_payload',
                 status='error',
-                message='Payload incompleto: bucket_id, name, owner_id ou field_mapping ausente',
+                message='Payload incompleto: bucket_id, name ou owner_id ausente',
                 user_id=owner_id if owner_id else 'unknown',
                 token=token if token else 'unknown',
                 metadata={"bucket_id": bucket_id, "filename": name},
                 print_prefix='❌ '
-            )            
+            )
             raise ValueError('Payload incompleto')
 
         # 5️⃣ Download
         log_process_event(
             supabase_client,
-            process_name='suppliers_upload',
-            function_name='process_supplier_upload',
+            process_name='migo_miro_upload',
+            function_name='process_po_migo_miro_upload',
             step='download_file',
             status='info',
             message=f"Baixando arquivo '{name}' do bucket '{bucket_id}'",
@@ -216,8 +213,8 @@ def lambda_handler(event, context):
         if isinstance(download_res, dict) and download_res.get('error'):
             log_process_event(
                 supabase_client,
-                process_name='suppliers_upload',
-                function_name='process_supplier_upload',
+                process_name='migo_miro_upload',
+                function_name='process_po_migo_miro_upload',
                 step='download_file',
                 status='error',
                 message=f"Erro ao baixar o arquivo: {download_res['error']}",
@@ -229,75 +226,82 @@ def lambda_handler(event, context):
             raise ValueError(f"Erro ao baixar o arquivo: {download_res['error']}")
         file_content = download_res.get('data') if isinstance(download_res, dict) else download_res
 
-        # 6️⃣ Parse+Mapping
+        # 6️⃣ Parse + transformação para o formato esperado
         t0 = time.monotonic()
         parsed_data = parse_file(file_content)
-        mapped_data = apply_mapping(parsed_data, field_mapping)
+        transformed_data = apply_mapping(parsed_data)
         duration = round(time.monotonic() - t0, 2)
-        total_suppliers = len(mapped_data.get("suppliers", []))
-        total_contacts = len(mapped_data.get("supplier_contacts", []))
+        
         log_process_event(
             supabase_client,
-            process_name='suppliers_upload',
-            function_name='process_supplier_upload',
-            step='parse_and_map',
+            process_name='migo_miro_upload',
+            function_name='process_po_migo_miro_upload',
+            step='parse_and_transform',
             status='success',
-            message=f"Parse+mapping levou {duration:.2f}s — {total_suppliers} fornecedores, {total_contacts} contatos",
+            message=f"Parse+transformação levou {duration:.2f}s — {len(transformed_data)} registros transformados",
             user_id=owner_id,
             token=token,
             metadata={
                 "bucket_id": bucket_id,
                 "filename": name,
                 "duration_seconds": duration,
-                "total_suppliers": total_suppliers,
-                "total_contacts": total_contacts
+                "total_records": len(transformed_data)
             },
             print_prefix='⏱ '
         )
         del file_content, parsed_data
 
-        # 7️⃣ Enriquecimento
-        resp = supabase_client.table('company_users').select('company_id').eq('id', owner_id).single().execute()
-        if not resp.data:
-            log_process_event(
-                supabase_client,
-                process_name='suppliers_upload',
-                function_name='process_supplier_upload',
-                step='enrich_company_id',
-                status='error',
-                message='Erro ao buscar company_id do usuário.',
-                user_id=owner_id,
-                token=token,
-                metadata={"owner_id": owner_id},
-                print_prefix='❌ '
-            )
-            raise ValueError('Erro ao buscar company_id do usuário.')
-        company_id = resp.data['company_id']
-        for lst in ('suppliers', 'supplier_contacts'):
-            mapped_data[lst] = [{**item, 'company_id': company_id} for item in mapped_data[lst]]
-
-        # 8️⃣ Processar batches
-        process_batches(mapped_data, owner_id, bucket_id, name, supabase_client, token)
+        # 7️⃣ Processar em batches
         log_process_event(
             supabase_client,
-            process_name='suppliers_upload',
-            function_name='process_supplier_upload',
-            step='process_batches',
-            status='success',
-            message=f"Lotes de fornecedores e contatos processados com sucesso para o arquivo '{name}'",
+            process_name='migo_miro_upload',
+            function_name='process_po_migo_miro_upload',
+            step='start_batch_processing',
+            status='info',
+            message=f"Iniciando processamento em batches de {len(transformed_data)} registros",
             user_id=owner_id,
             token=token,
-            metadata={"bucket_id": bucket_id, "filename": name},
+            metadata={
+                "bucket_id": bucket_id,
+                "filename": name,
+                "total_records": len(transformed_data),
+                "batch_size": 500
+            },
+            print_prefix='🚀 '
+        )
+        
+        # Processa os dados em batches
+        process_migo_miro_batches(transformed_data, owner_id, bucket_id, name, supabase_client, token)
+        
+        log_process_event(
+            supabase_client,
+            process_name='migo_miro_upload',
+            function_name='process_po_migo_miro_upload',
+            step='batch_processing_complete',
+            status='success',
+            message=f"Processamento em batches concluído com sucesso para o arquivo '{name}'",
+            user_id=owner_id,
+            token=token,
+            metadata={"bucket_id": bucket_id, "filename": name, "total_records": len(transformed_data)},
             print_prefix='✅ '
         )
-        return {'statusCode': 200, 'headers': {**headers, 'Content-Type': 'application/json'}, 'body': json.dumps({'success': True})}
+        
+        return {
+            'statusCode': 200, 
+            'headers': {**headers, 'Content-Type': 'application/json'}, 
+            'body': json.dumps({
+                'success': True, 
+                'processed_records': len(transformed_data),
+                'total_batches': len(list(chunk_array(transformed_data, 500)))
+            })
+        }
 
     except Exception as e:
         log_process_event(
             supabase_client,
-            process_name='suppliers_upload',
-            function_name='process_supplier_upload',
-            step='process_batches',
+            process_name='migo_miro_upload',
+            function_name='process_po_migo_miro_upload',
+            step='error_handling',
             status='error',
             message=f"Erro na função de processamento: {e}",
             user_id=owner_id if owner_id else 'unknown',
@@ -305,10 +309,14 @@ def lambda_handler(event, context):
             metadata={"bucket_id": bucket_id, "filename": name},
             print_prefix='❌ '
         )
-        return {'statusCode': 500, 'headers': {**headers, 'Content-Type': 'application/json'}, 'body': json.dumps({'error': str(e)})}
+        return {
+            'statusCode': 500, 
+            'headers': {**headers, 'Content-Type': 'application/json'}, 
+            'body': json.dumps({'error': str(e)})
+        }
 
     finally:
-        # 9️⃣ Always-remove: instrumentado
+        # 8️⃣ Always-remove arquivo do bucket
         if supabase_client and bucket_id and name:
             try:
                 bucket = supabase_client.storage.from_(bucket_id)
@@ -317,9 +325,9 @@ def lambda_handler(event, context):
                 if err:
                     log_process_event(
                         supabase_client,
-                        process_name='suppliers_upload',
-                        function_name='process_supplier_upload',
-                        step='cleanup_zip',
+                        process_name='migo_miro_upload',
+                        function_name='process_po_migo_miro_upload',
+                        step='cleanup_file',
                         status='error',
                         message=f"Erro ao remover '{name}' do bucket '{bucket_id}': {err}",
                         user_id=owner_id if owner_id else 'unknown',
@@ -330,9 +338,9 @@ def lambda_handler(event, context):
                 else:
                     log_process_event(
                         supabase_client,
-                        process_name='suppliers_upload',
-                        function_name='process_supplier_upload',
-                        step='cleanup_zip',
+                        process_name='migo_miro_upload',
+                        function_name='process_po_migo_miro_upload',
+                        step='cleanup_file',
                         status='success',
                         message=f"Arquivo '{name}' removido do bucket '{bucket_id}' com sucesso.",
                         user_id=owner_id if owner_id else 'unknown',
@@ -343,9 +351,9 @@ def lambda_handler(event, context):
             except Exception as rem_e:
                 log_process_event(
                     supabase_client,
-                    process_name='suppliers_upload',
-                    function_name='process_supplier_upload',
-                    step='cleanup_zip',
+                    process_name='migo_miro_upload',
+                    function_name='process_po_migo_miro_upload',
+                    step='cleanup_file',
                     status='error',
                     message=f"Exceção ao tentar remover '{name}' do bucket '{bucket_id}': {rem_e}",
                     user_id=owner_id if owner_id else 'unknown',
@@ -356,9 +364,9 @@ def lambda_handler(event, context):
         else:
             log_process_event(
                 supabase_client,
-                process_name='suppliers_upload',
-                function_name='process_supplier_upload',
-                step='cleanup_zip',
+                process_name='migo_miro_upload',
+                function_name='process_po_migo_miro_upload',
+                step='cleanup_file',
                 status='skip',
                 message="Remoção do arquivo ignorada: supabase_client, bucket_id ou name não definido",
                 user_id=owner_id if owner_id else 'unknown',
