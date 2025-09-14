@@ -3,7 +3,7 @@
 version = 0.1
 
 [default.global.parameters]
-stack_name = "transpetro"
+stack_name = "smarti-sandbox"
 
 [default.build.parameters]
 cached = true
@@ -46,3 +46,12 @@ region = "sa-east-1"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
 parameter_overrides = "StageName=prod SecretName=transpetro/secrets/supabase-prod"
+
+[sandbox.deploy.parameters]
+stack_name = "smarti-sandbox"
+s3_bucket = "smarti-sandbox-serverless-artifacts"
+s3_prefix = "sandbox"
+region = "sa-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "StageName=sandbox SecretName=smarti-sandbox/secrets/supabase"

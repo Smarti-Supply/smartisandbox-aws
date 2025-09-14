@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  transpetro - Serverless application with multiple Lambda functions (staging/prod separated)
+  smarti-sandbox - Serverless application with multiple Lambda functions for sandbox environment
 
 Globals:
   Function:
@@ -12,7 +12,7 @@ Globals:
       LogFormat: JSON
     Tracing: Active
     Tags:
-      project: transpetro
+      project: smarti-sandbox
       stage: !Ref StageName
     Environment:
       Variables:
@@ -21,19 +21,19 @@ Globals:
 Parameters:
   StageName:
     Type: String
-    Default: staging
-    Description: Nome do Stage do API Gateway (staging ou prod)
+    Default: sandbox
+    Description: Nome do Stage do API Gateway (sandbox)
 
   SecretName:
     Type: String
-    Default: transpetro/secrets/supabase-staging
+    Default: smarti-sandbox/secrets/supabase
     Description: Nome do Secret no Secrets Manager para pegar variáveis
 
 Resources:
-  TranspetroApi:
+  SmartiSandboxApi:
     Type: AWS::Serverless::Api
     Properties:
-      Name: transpetro-api
+      Name: smarti-sandbox-api
       StageName: !Ref StageName
       TracingEnabled: true
       Auth:
@@ -45,8 +45,9 @@ Resources:
           DataTraceEnabled: true
           MetricsEnabled: true
       Tags:
-        project: transpetro
+        project: smarti-sandbox
         stage: !Ref StageName
+
 
   ProcessSupplierUploadFunction:
     Type: AWS::Serverless::Function
@@ -67,7 +68,7 @@ Resources:
         ProcessSupplierUpload:
           Type: Api
           Properties:
-            RestApiId: !Ref TranspetroApi
+            RestApiId: !Ref SmartiSandboxApi
             Path: /process-supplier-upload
             Method: post
             Auth:
@@ -92,7 +93,7 @@ Resources:
         ProcessPoUpload:
           Type: Api
           Properties:
-            RestApiId: !Ref TranspetroApi
+            RestApiId: !Ref SmartiSandboxApi
             Path: /process-po-upload
             Method: post
             Auth:
@@ -117,7 +118,7 @@ Resources:
         ProcessPoFiles:
           Type: Api
           Properties:
-            RestApiId: !Ref TranspetroApi
+            RestApiId: !Ref SmartiSandboxApi
             Path: /process-po-files
             Method: post
             Auth:
@@ -142,7 +143,7 @@ Resources:
         ProcessPoMigoMiroUpload:
           Type: Api
           Properties:
-            RestApiId: !Ref TranspetroApi
+            RestApiId: !Ref SmartiSandboxApi
             Path: /process-po-migo-miro-upload
             Method: post
             Auth:
@@ -151,7 +152,7 @@ Resources:
 Outputs:
   ProcessSupplierUploadApi:
     Description: API Gateway endpoint URL for Process Supplier Upload
-    Value: !Sub "https://${TranspetroApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/process-supplier-upload"
+    Value: !Sub "https://${SmartiSandboxApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/process-supplier-upload"
   ProcessSupplierUploadFunction:
     Description: Lambda Function ARN
     Value: !GetAtt ProcessSupplierUploadFunction.Arn
@@ -161,7 +162,7 @@ Outputs:
 
   ProcessPoUploadApi:
     Description: API Gateway endpoint URL for Process PO Upload
-    Value: !Sub "https://${TranspetroApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/process-po-upload"
+    Value: !Sub "https://${SmartiSandboxApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/process-po-upload"
   ProcessPoUploadFunction:
     Description: Lambda Function ARN
     Value: !GetAtt ProcessPoUploadFunction.Arn
@@ -171,7 +172,7 @@ Outputs:
 
   ProcessPoFilesApi:
     Description: API Gateway endpoint URL for Process PO Files
-    Value: !Sub "https://${TranspetroApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/process-po-files"
+    Value: !Sub "https://${SmartiSandboxApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/process-po-files"
   ProcessPoFilesFunction:
     Description: Lambda Function ARN
     Value: !GetAtt ProcessPoFilesFunction.Arn
@@ -181,7 +182,7 @@ Outputs:
 
   ProcessPoMigoMiroUploadApi:
     Description: API Gateway endpoint URL for Process PO Migo Miro Upload
-    Value: !Sub "https://${TranspetroApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/process-po-migo-miro-upload"
+    Value: !Sub "https://${SmartiSandboxApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/process-po-migo-miro-upload"
   ProcessPoMigoMiroUploadFunction:
     Description: Lambda Function ARN
     Value: !GetAtt ProcessPoMigoMiroUploadFunction.Arn
