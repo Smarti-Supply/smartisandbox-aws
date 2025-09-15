@@ -1,7 +1,7 @@
 # helpers/cors_headers.py
 ALLOWED_ORIGINS = [
     "https://editor.weweb.io",
-    "https://transpetro.smartisupply.com.br"
+    "https://sandbox.smartisupply.com.br"
 ]
 
 def cors_headers(origin: str | None) -> dict:
