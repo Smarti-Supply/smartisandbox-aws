@@ -29,24 +29,6 @@ warm_containers = "EAGER"
 [default.local_start_lambda.parameters]
 warm_containers = "EAGER"
 
-[staging.deploy.parameters]
-stack_name = "transpetro-staging"
-s3_bucket = "transpetro-serverless-artifacts"
-s3_prefix = "staging"
-region = "sa-east-1"
-confirm_changeset = true
-capabilities = "CAPABILITY_IAM"
-parameter_overrides = "StageName=staging SecretName=transpetro/secrets/supabase-staging"
-
-[prod.deploy.parameters]
-stack_name = "transpetro-prod"
-s3_bucket = "transpetro-serverless-artifacts"
-s3_prefix = "prod"
-region = "sa-east-1"
-confirm_changeset = true
-capabilities = "CAPABILITY_IAM"
-parameter_overrides = "StageName=prod SecretName=transpetro/secrets/supabase-prod"
-
 [sandbox.deploy.parameters]
 stack_name = "smarti-sandbox"
 s3_bucket = "smarti-sandbox-serverless-artifacts"
