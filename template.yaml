@@ -149,6 +149,31 @@ Resources:
             Auth:
               ApiKeyRequired: true
 
+  ProcessExportFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: process_export/
+      Handler: app.lambda_handler
+      AutoPublishAlias: !Ref StageName
+      Timeout: 180
+      MemorySize: 512
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: "Allow"
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SecretName}*
+      Events:
+        ProcessExport:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SmartiSandboxApi
+            Path: /process-export
+            Method: post
+            Auth:
+              ApiKeyRequired: true
+
 Outputs:
   ProcessSupplierUploadApi:
     Description: API Gateway endpoint URL for Process Supplier Upload
@@ -189,3 +214,13 @@ Outputs:
   ProcessPoMigoMiroUploadFunctionIamRole:
     Description: Implicit IAM Role created for the function
     Value: !GetAtt ProcessPoMigoMiroUploadFunctionRole.Arn
+
+  ProcessExportApi:
+    Description: API Gateway endpoint URL for Process Export
+    Value: !Sub "https://${SmartiSandboxApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/process-export"
+  ProcessExportFunction:
+    Description: Lambda Function ARN
+    Value: !GetAtt ProcessExportFunction.Arn
+  ProcessExportFunctionIamRole:
+    Description: Implicit IAM Role created for the function
+    Value: !GetAtt ProcessExportFunctionRole.Arn
