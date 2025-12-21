@@ -6,7 +6,7 @@ from supabase import create_client, Client
 from helpers.cors_headers import cors_headers
 from helpers.logger import log_process_event
 from helpers.consolidate_data import consolidate_data
-from helpers.generate_excel import generate_excel
+from helpers.generate_pdf import generate_pdf
 from helpers.send_email import send_email
 
 # Cache de secrets e cliente Supabase para evitar recriação a cada invocação
@@ -172,45 +172,60 @@ def lambda_handler(event, context):
             print_prefix='✅ '
         )
         
-        # 6️⃣ Gerar Excel
+        # 6️⃣ Gerar PDF
         log_process_event(
             supabase_client,
             process_name=process_name,
             function_name='process_order_details_export',
-            step='start_export',
+            step='generate_pdf',
             status='info',
-            message=f"Iniciando geração de Excel para order_id '{order_id}' com {len(consolidated_data)} itens consolidados",
+            message=f"Iniciando geração de PDF para order_id '{order_id}'",
             user_id=user_id,
             token=token,
-            metadata={"order_id": order_id, "total_records": len(consolidated_data)},
-            print_prefix='🚀 '
+            metadata={"order_id": order_id},
+            print_prefix='📄 '
         )
         
-        t0 = time.monotonic()
-        excel_bytes = generate_excel(consolidated_data)
-        duration = round(time.monotonic() - t0, 2)
-        
-        log_process_event(
-            supabase_client,
-            process_name=process_name,
-            function_name='process_order_details_export',
-            step='generate_excel',
-            status='success',
-            message=f"Excel gerado em {duration:.2f}s — {len(excel_bytes)} bytes para order_id '{order_id}'",
-            user_id=user_id,
-            token=token,
-            metadata={
-                "order_id": order_id,
-                "duration_seconds": duration,
-                "file_size_bytes": len(excel_bytes),
-                "total_records": len(consolidated_data)
-            },
-            print_prefix='⏱ '
-        )
+        try:
+            t0_pdf = time.monotonic()
+            pdf_bytes = generate_pdf(order, order_items, observations, followup_tracking, order_item_invoices)
+            duration_pdf = round(time.monotonic() - t0_pdf, 2)
+            
+            log_process_event(
+                supabase_client,
+                process_name=process_name,
+                function_name='process_order_details_export',
+                step='generate_pdf',
+                status='success',
+                message=f"PDF gerado em {duration_pdf:.2f}s — {len(pdf_bytes)} bytes para order_id '{order_id}'",
+                user_id=user_id,
+                token=token,
+                metadata={
+                    "order_id": order_id,
+                    "duration_seconds": duration_pdf,
+                    "file_size_bytes": len(pdf_bytes)
+                },
+                print_prefix='⏱ '
+            )
+        except Exception as pdf_error:
+            # Se falhar a geração de PDF, logar erro e re-lançar (não podemos continuar sem PDF)
+            log_process_event(
+                supabase_client,
+                process_name=process_name,
+                function_name='process_order_details_export',
+                step='generate_pdf',
+                status='error',
+                message=f"Erro ao gerar PDF para order_id '{order_id}': {pdf_error}",
+                user_id=user_id,
+                token=token,
+                metadata={"order_id": order_id, "error": str(pdf_error)},
+                print_prefix='❌ '
+            )
+            raise Exception(f"Erro ao gerar PDF: {pdf_error}") from pdf_error
         
         # 7️⃣ Enviar email
         table_name = f"order_details_{order_id}"
-        send_email(user_email, excel_bytes, table_name, supabase_client, user_id, token, process_name)
+        send_email(user_email, pdf_bytes, table_name, supabase_client, user_id, token, process_name)
         
         log_process_event(
             supabase_client,

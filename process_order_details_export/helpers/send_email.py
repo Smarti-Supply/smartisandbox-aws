@@ -47,14 +47,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           <!-- Main content -->
           <tr>
             <td align="center" style="padding: 30px 20px; font-family: Arial, sans-serif; color: #464C53;">
-              <h2 style="font-size: 24px; margin-bottom: 16px; color: #27374D;">Exportação de Dados</h2>
-</ol>
+              <h2 style="font-size: 24px; margin-bottom: 16px; color: #27374D;">Relatório do Pedido</h2>
+
+              <p style="margin: 0 0 20px;">Segue em anexo o relatório em PDF com o histórico completo do pedido.</p>
 
               <!-- Informações dos Pedidos -->
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 20px auto; background-color: #F3F6F9; border-radius: 6px; border: 1px solid #9DB2BF;">
                 <tr>
                   <td style="padding: 20px; color: #464C53; font-family: Arial, sans-serif;">
-                    Arquivo em anexo
+                    Relatório PDF em anexo
                   </td>
                 </tr>
               </table>
@@ -76,37 +77,37 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </html>"""
 
 
-def send_email(user_email: str, excel_bytes: bytes, table_name: str, supabase_client, user_id: str, token: str, process_name: str) -> None:
+def send_email(user_email: str, pdf_bytes: bytes, table_name: str, supabase_client, user_id: str, token: str, process_name: str) -> None:
     """
-    Envia email via Resend API com arquivo Excel anexado.
+    Envia email via Resend API com arquivo PDF anexado.
     
     Args:
         user_email: Email do destinatário
-        excel_bytes: Arquivo Excel em bytes
+        pdf_bytes: Arquivo PDF em bytes
         table_name: Nome da tabela (usado no nome do arquivo)
         supabase_client: Cliente Supabase para logs
         user_id: ID do usuário para logs
         token: Token para logs
-        process_name: Nome do processo para logs (ex: data_export_suppliers)
+        process_name: Nome do processo para logs
     """
     try:
         # Gerar nome do arquivo com timestamp
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"{table_name}_export_{timestamp}.xlsx"
+        pdf_filename = f"{table_name}_relatorio_{timestamp}.pdf"
         
-        # Codificar Excel em base64
-        base64_content = base64.b64encode(excel_bytes).decode('utf-8')
+        # Codificar PDF em base64
+        pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
         
         # Montar payload
         payload = {
             "from": "SmartiSupply Followup <followup@smartisupply.com.br>",
             "to": [user_email],
-            "subject": "Smarti - Exportação de Dados",
+            "subject": "Smarti - Relatório do Pedido",
             "html": HTML_TEMPLATE,
             "attachments": [
                 {
-                    "filename": filename,
-                    "content": base64_content
+                    "filename": pdf_filename,
+                    "content": pdf_base64
                 }
             ]
         }
@@ -124,10 +125,14 @@ def send_email(user_email: str, excel_bytes: bytes, table_name: str, supabase_cl
             function_name='process_order_details_export',
             step='send_email',
             status='info',
-            message=f"Iniciando envio de email para '{user_email}' com arquivo '{filename}'",
+            message=f"Iniciando envio de email para '{user_email}' com arquivo '{pdf_filename}'",
             user_id=user_id,
             token=token,
-            metadata={"user_email": user_email, "filename": filename, "file_size_bytes": len(excel_bytes)},
+            metadata={
+                "user_email": user_email, 
+                "pdf_filename": pdf_filename,
+                "pdf_size_bytes": len(pdf_bytes)
+            },
             print_prefix='📧 '
         )
         
@@ -160,7 +165,11 @@ def send_email(user_email: str, excel_bytes: bytes, table_name: str, supabase_cl
                     message=f"Email enviado com sucesso para '{user_email}' - ID: {response_data.get('id', 'N/A')}",
                     user_id=user_id,
                     token=token,
-                    metadata={"user_email": user_email, "filename": filename, "resend_id": response_data.get('id')},
+                    metadata={
+                        "user_email": user_email, 
+                        "pdf_filename": pdf_filename,
+                        "resend_id": response_data.get('id')
+                    },
                     print_prefix='✅ '
                 )
             else:
@@ -176,8 +185,13 @@ def send_email(user_email: str, excel_bytes: bytes, table_name: str, supabase_cl
             message=f"Erro ao enviar email para '{user_email}': {e}",
             user_id=user_id,
             token=token,
-            metadata={"user_email": user_email, "filename": filename if 'filename' in locals() else 'unknown'},
+            metadata={
+                "user_email": user_email, 
+                "pdf_filename": pdf_filename if 'pdf_filename' in locals() else 'unknown'
+            },
             print_prefix='❌ '
         )
         raise
+
+
 

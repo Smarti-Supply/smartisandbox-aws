@@ -31,3 +31,5 @@ def log_process_event(
     except Exception as log_err:
         print(f"⚠️ Falha ao registrar log: {log_err}")
 
+
+
