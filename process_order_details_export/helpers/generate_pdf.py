@@ -90,6 +90,7 @@ def create_timeline_events(
     order_items: List[Dict],
     observations: List[Dict],
     followup_tracking: List[Dict],
+    followup_logs: List[Dict],
     order_item_invoices: List[Dict]
 ) -> List[Dict]:
     """
@@ -100,6 +101,7 @@ def create_timeline_events(
         order_items: Lista de itens do pedido
         observations: Lista de observações
         followup_tracking: Lista de follow-ups
+        followup_logs: Lista de logs de followups enviados
         order_item_invoices: Lista de faturas
     
     Returns:
@@ -175,6 +177,53 @@ def create_timeline_events(
                 'user': user_formatted
             })
     
+    # Adicionar eventos de followup_logs (logs de followups enviados)
+    for log in followup_logs:
+        sent_at = log.get('sent_at') or log.get('created_at')
+        is_automatic = log.get('is_automatic', False)
+        notification_type = log.get('notification_type', 'email')
+        supplier_contacts = log.get('supplier_contacts', [])
+        user_observations = log.get('user_observations', '')
+        sent_by = log.get('sent_by', '')
+        rule_name = log.get('rule_name', '')
+        
+        # Formatar tipo de notificação
+        tipo_notificacao = 'Email' if notification_type == 'email' else notification_type.capitalize()
+        
+        # Formatar contatos do fornecedor
+        contatos_str = ', '.join(supplier_contacts) if supplier_contacts else 'N/A'
+        
+        # Determinar quem enviou
+        if is_automatic:
+            enviado_por = 'Sistema (automático)'
+        elif sent_by:
+            enviado_por = f'Usuário ({sent_by})'
+        else:
+            enviado_por = 'Usuário'
+        
+        # Montar descrição do evento
+        desc_parts = []
+        
+        # Adicionar rule_name no início se existir
+        if rule_name and rule_name.strip():
+            desc_parts.append(f"Regra: {rule_name}")
+            desc_parts.append("-")
+        
+        desc_parts.append(f"Followup enviado via {tipo_notificacao}")
+        if contatos_str and contatos_str != 'N/A':
+            desc_parts.append(f"para {contatos_str}")
+        desc_parts.append(f"({enviado_por})")
+        if user_observations and user_observations.strip():
+            # Limitar tamanho da observação para não ficar muito longo
+            obs_short = user_observations[:100] + '...' if len(user_observations) > 100 else user_observations
+            desc_parts.append(f"- {obs_short}")
+        
+        events.append({
+            'date': sent_at,
+            'description': ' '.join(desc_parts),
+            'user': enviado_por
+        })
+    
     # Adicionar eventos de faturas
     for invoice in order_item_invoices:
         item_id = invoice.get('numero_item')
@@ -218,6 +267,7 @@ def generate_pdf(
     order_items: List[Dict],
     observations: List[Dict],
     followup_tracking: List[Dict],
+    followup_logs: List[Dict],
     order_item_invoices: List[Dict]
 ) -> bytes:
     """
@@ -228,6 +278,7 @@ def generate_pdf(
         order_items: Lista de itens do pedido
         observations: Lista de observações
         followup_tracking: Lista de follow-ups
+        followup_logs: Lista de logs de followups enviados
         order_item_invoices: Lista de faturas
     
     Returns:
@@ -287,7 +338,7 @@ def generate_pdf(
     story.append(Spacer(1, 1*cm))
     
     # Criar timeline de eventos
-    events = create_timeline_events(order, order_items, observations, followup_tracking, order_item_invoices)
+    events = create_timeline_events(order, order_items, observations, followup_tracking, followup_logs, order_item_invoices)
     
     # Tabela de eventos
     if events:

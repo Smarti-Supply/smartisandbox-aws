@@ -66,6 +66,7 @@ def lambda_handler(event, context):
         order_items = raw.get('order_items', [])  # Array de objetos da tabela order_items
         observations = raw.get('observations', [])
         followup_tracking = raw.get('followup_tracking', [])
+        followup_logs = raw.get('followup_logs', [])  # Array de logs de followups enviados
         order_item_invoices = raw.get('order_item_invoices', [])  # Array de invoices relacionadas
         user_id = raw.get('user_id')
         company_id = raw.get('company_id')
@@ -88,6 +89,7 @@ def lambda_handler(event, context):
                 "order_items_count": len(order_items),
                 "observations_count": len(observations),
                 "followup_tracking_count": len(followup_tracking),
+                "followup_logs_count": len(followup_logs),
                 "order_item_invoices_count": len(order_item_invoices)
             },
             print_prefix='📦 '
@@ -128,6 +130,8 @@ def lambda_handler(event, context):
             observations = []
         if not isinstance(followup_tracking, list):
             followup_tracking = []
+        if not isinstance(followup_logs, list):
+            followup_logs = []
         if not isinstance(order_item_invoices, list):
             order_item_invoices = []
         
@@ -188,7 +192,7 @@ def lambda_handler(event, context):
         
         try:
             t0_pdf = time.monotonic()
-            pdf_bytes = generate_pdf(order, order_items, observations, followup_tracking, order_item_invoices)
+            pdf_bytes = generate_pdf(order, order_items, observations, followup_tracking, followup_logs, order_item_invoices)
             duration_pdf = round(time.monotonic() - t0_pdf, 2)
             
             log_process_event(
