@@ -229,7 +229,8 @@ def lambda_handler(event, context):
         
         # 7️⃣ Enviar email
         table_name = f"order_details_{order_id}"
-        send_email(user_email, pdf_bytes, table_name, supabase_client, user_id, token, process_name)
+        order_number = order.get('numero_pedido') if order else None
+        send_email(user_email, pdf_bytes, table_name, supabase_client, user_id, token, process_name, order_number)
         
         log_process_event(
             supabase_client,

@@ -77,7 +77,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </html>"""
 
 
-def send_email(user_email: str, pdf_bytes: bytes, table_name: str, supabase_client, user_id: str, token: str, process_name: str) -> None:
+def send_email(user_email: str, pdf_bytes: bytes, table_name: str, supabase_client, user_id: str, token: str, process_name: str, order_number: str = None) -> None:
     """
     Envia email via Resend API com arquivo PDF anexado.
     
@@ -89,6 +89,7 @@ def send_email(user_email: str, pdf_bytes: bytes, table_name: str, supabase_clie
         user_id: ID do usuário para logs
         token: Token para logs
         process_name: Nome do processo para logs
+        order_number: Número do pedido para incluir no assunto 
     """
     try:
         # Gerar nome do arquivo com timestamp
@@ -98,11 +99,16 @@ def send_email(user_email: str, pdf_bytes: bytes, table_name: str, supabase_clie
         # Codificar PDF em base64
         pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
         
+        # Montar assunto com ou sem order_number
+        subject = "Smarti - Relatório do Pedido"
+        if order_number:
+            subject = f"Smarti - Relatório do Pedido #{order_number}"
+        
         # Montar payload
         payload = {
             "from": "SmartiSupply Followup <followup@smartisupply.com.br>",
             "to": [user_email],
-            "subject": "Smarti - Relatório do Pedido",
+            "subject": subject,
             "html": HTML_TEMPLATE,
             "attachments": [
                 {
